@@ -18,14 +18,23 @@ public class Author {
     @CassandraType(type= Name.TEXT)
     private String name;
 
-    public Author(String name) {
-        this.id = null;
-        this.name = name;
-    }
+    @Column(value = "personal_name")
+    @CassandraType(type= Name.TEXT)
+    private String personalName;
+    
+    public Author() {}
     
     public Author(String id, String name) {
         this.id = id;
         this.name = name;
+        this.personalName = null;
+    }
+    
+    public Author(String id, String name, String personalName) {
+        super();
+        this.id = id;
+        this.name = name;
+        this.personalName = personalName;
     }
 
     public String getId() {
@@ -42,5 +51,13 @@ public class Author {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getPersonalName() {
+        return personalName;
+    }
+
+    public void setPersonalName(String personalName) {
+        this.personalName = personalName;
     }
 }

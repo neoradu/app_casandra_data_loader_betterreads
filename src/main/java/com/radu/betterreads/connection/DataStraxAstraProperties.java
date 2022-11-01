@@ -5,7 +5,7 @@ import java.io.File;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /*These is not used*/
-//@ConfigurationProperties(prefix = "datastax.astra")
+@ConfigurationProperties(prefix = "datastax.astra")
 public class DataStraxAstraProperties {
     private File secureConnectBundle;
 

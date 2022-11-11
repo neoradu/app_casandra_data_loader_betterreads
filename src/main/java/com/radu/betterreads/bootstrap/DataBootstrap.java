@@ -2,11 +2,11 @@ package com.radu.betterreads.bootstrap;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -45,89 +45,122 @@ public class DataBootstrap implements CommandLineRunner {
         this.bookRepository = bookRepository;
     }
     
-    public void bootstrapAuthors() {
-        authorRepository.deleteAll();
+    public void bootstrapAuthors() { 
         
-        if(authorsFilePath == null)
-            throw new RuntimeException("Authors file not found");
+        if(authorsFilePath == null) {
+            log.error("Authors file path not found!");
+            return;
+        } else {
+            log.debug("Opening authors file path:" + authorsFilePath);
+        }
+        Instant startTime = Instant.now();
         
         //try with resource --> it will close the resource at the end
         try(Stream<String> lines = Files.lines(Paths.get(authorsFilePath))) {
-            lines.forEach(line -> {
-                
+            lines
+                 //.limit(10000)
+                 .parallel()
+                 .forEach(line -> {
                 try {
                     String jsonString = line.substring(line.indexOf('{'));
                     JsonNode jsonNode = (new ObjectMapper().readTree(jsonString));
                     Author author = new Author();
-                    author.setId(jsonNode.get("key").asText().replace("/authors/", ""));
+                    author.setId(jsonNode.path("key").asText("dummy_id").replace("/authors/", ""));
                     author.setName(jsonNode.path("name").asText("NA"));
                     author.setPersonalName(jsonNode.path("personal_name").asText("NA"));
                     author = authorRepository.save(author);
-                    log.debug(String.format("Author:%s saved id:%s", author.getName(), author.getId()));
+
+                    /*log.debug(String.format("ThreadAuthor:%d saved author:%s id:%s",
+                                             Thread.currentThread().getId(), author.getName(), author.getId()));*/
                 } catch (JsonMappingException e) {} 
                   catch (JsonProcessingException e) {}
             });
         } catch (IOException e) {
             e.printStackTrace();
             new RuntimeException("Exception when reding the authors file", e);
-        }     
+        } 
+        log.debug(String.format("Authors Loaded in: %dmin %ds %dms", Duration.between(startTime, Instant.now()).toMinutes(),
+                Duration.between(startTime, Instant.now()).toSecondsPart(),
+                Duration.between(startTime, Instant.now()).toMillisPart()));
     }
     
     public void bootstrapBooks() {
-        bookRepository.deleteAll();
         
-        if(booksFilePath == null)
-            throw new RuntimeException("Books file not found");
+        if(booksFilePath == null) {
+            log.error("Books file path not found!");
+            return;
+        } else {
+            log.debug("Opening Books file path:" + booksFilePath);
+        }
+        Instant startTime = Instant.now();
         //try with resource --> it will close the resource at the end
         try(Stream<String> lines = Files.lines(Paths.get(booksFilePath))) {
-            lines.forEach(line -> {
+            final Author defaultAuthor = new Author("dummy", "Unknown Author");
+            lines
+            //.limit(100000)
+            .parallel()
+            .forEach(line -> {
                 try {
                     String jsonString = line.substring(line.indexOf('{'));
                     JsonNode bookJson = (new ObjectMapper().readTree(jsonString));
                     Book book = new Book();
-                    book.setId(bookJson.get("key").asText().replace("/works/", ""));
+                    book.setId(bookJson.get("key").asText("default_id").replace("/works/", ""));
                     book.setName(bookJson.path("title").asText("NA").trim());
                     String dateString = bookJson.path("created").path("value").asText("1900-01-01T");
                     dateString = dateString.substring(0, dateString.indexOf("T"));
                     book.setPublishedDate(LocalDate.parse(dateString));
                     if(bookJson.path("authors").isArray()) {
                         for(JsonNode authorJson : bookJson.get("authors")) {
-                            String authorId = authorJson.get("author").get("key").asText().replace("/authors/", "");
-                            Optional<Author> authorOpt = authorRepository.findById(authorId);
-                            if (authorOpt.isPresent()) {
-                                book.getAuthorNames().add(authorOpt.get().getName());
-                                book.getAuthorIds().add(authorId);
-                            } else {
-                                log.error(String.format("Author id:%s NOT FOUND!", authorId));
-                                book.getAuthorNames().add("Unknown Author");
-                                book.getAuthorIds().add(authorId);
+                            String authorId = authorJson.path("author").path("key").asText(null);
+                            Author author = defaultAuthor;
+                            if(authorId != null) {
+                                authorId = authorId.replace("/authors/", "");
+                                Optional<Author> authorOpt = authorRepository.findById(authorId);
+                                author = authorOpt.orElse(defaultAuthor);
                             }
+                            book.getAuthorNames().add(author.getName());
+                            book.getAuthorIds().add(author.getId());
                         }
                     }
+                    book.getAuthorNames().add("Unknown Author");
+                    book.getAuthorIds().add("dummy_id");
+                    
                     if(bookJson.path("covers").isArray()) { 
-                        for(JsonNode authorJson : bookJson.get("covers")) {
-                            book.getCoverIds().add(authorJson.asText());
+                        for(JsonNode cover : bookJson.get("covers")) {
+                            book.getCoverIds().add(cover.asText());
                         }
                     }
                     book.setDescription(bookJson.path("description").path("value").asText("NA"));
                     
                     book = bookRepository.save(book);
-                    log.debug(String.format("Book:\"%s\" author:%s -> saved id:%s",
-                                            book.getName(),book.getAuthorNames(), book.getId()));
-                } catch (JsonMappingException e) {} 
-                  catch (JsonProcessingException e) {}
+
+                    /*log.debug(String.format("Thread:%d Book:\"%s\" author:%s -> saved id:%s",
+                                             Thread.currentThread().getId(),
+                                             book.getName(),book.getAuthorNames(), book.getId()));*/
+                } catch (JsonMappingException e) {
+                    e.printStackTrace();
+                } catch (JsonProcessingException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                } 
+
             });
+            
         } catch (IOException e) {
             e.printStackTrace();
             new RuntimeException("Exception when reding the authors file", e);
         }   
-        
+        log.debug(String.format("Books Loaded in: %dmin %ds %dms", Duration.between(startTime, Instant.now()).toMinutes(),
+                                                                  Duration.between(startTime, Instant.now()).toSecondsPart(),
+                                                                  Duration.between(startTime, Instant.now()).toMillisPart()));
     }
     
     @Override
     public void run(String... args) throws Exception {
+        
         bootstrapAuthors();
         bootstrapBooks();
+
         shutdownManager.initiateShutdown(0);
     }
 
